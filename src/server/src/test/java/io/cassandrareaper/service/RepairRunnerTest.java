@@ -103,7 +103,9 @@ public final class RepairRunnerTest {
             .nodes(NODES)
             .datacenters(DATACENTERS)
             .blacklistedTables(BLACKLISTED_TABLES)
-            .repairThreadCount(REPAIR_THREAD_COUNT));
+            .repairThreadCount(REPAIR_THREAD_COUNT)
+            .activeTime("")
+            .inactiveTime(""));
 
     DateTimeUtils.setCurrentMillisFixed(TIME_RUN);
 
@@ -114,7 +116,10 @@ public final class RepairRunnerTest {
                 .repairParallelism(RepairParallelism.PARALLEL),
             Collections.singleton(
                 RepairSegment.builder(
-                    Segment.builder().withTokenRange(new RingRange(BigInteger.ZERO, BigInteger.ONE)).build(),
+                    Segment.builder().withTokenRange(new RingRange(BigInteger.ZERO, BigInteger.ONE))
+                    .withActiveTime("")
+                    .withInactiveTime("")
+                    .build(),
                     cf.getId())));
 
     final UUID RUN_ID = run.getId();
@@ -244,6 +249,7 @@ public final class RepairRunnerTest {
     final double INTENSITY = 0.5f;
     final int REPAIR_THREAD_COUNT = 1;
     final IStorage storage = new MemoryStorage();
+
     storage.addCluster(new Cluster(CLUSTER_NAME, null, Collections.<String>singleton("127.0.0.1")));
     DateTimeUtils.setCurrentMillisFixed(TIME_RUN);
 
@@ -256,7 +262,9 @@ public final class RepairRunnerTest {
             .nodes(NODES)
             .datacenters(DATACENTERS)
             .blacklistedTables(BLACKLISTED_TABLES)
-            .repairThreadCount(REPAIR_THREAD_COUNT));
+            .repairThreadCount(REPAIR_THREAD_COUNT)
+            .activeTime("")
+            .inactiveTime(""));
 
     RepairRun run = storage.addRepairRun(
             RepairRun.builder(CLUSTER_NAME, cf.getId())
@@ -267,6 +275,8 @@ public final class RepairRunnerTest {
                 RepairSegment.builder(
                     Segment.builder()
                         .withTokenRange(new RingRange(BigInteger.ZERO, BigInteger.ONE))
+                        .withActiveTime("")
+                        .withInactiveTime("")
                         .build(),
                     cf.getId())));
 
@@ -420,7 +430,9 @@ public final class RepairRunnerTest {
             .nodes(NODES)
             .datacenters(DATACENTERS)
             .blacklistedTables(BLACKLISTED_TABLES)
-            .repairThreadCount(REPAIR_THREAD_COUNT))
+            .repairThreadCount(REPAIR_THREAD_COUNT)
+            .activeTime("")
+            .inactiveTime(""))
         .getId();
 
     DateTimeUtils.setCurrentMillisFixed(TIME_RUN);
@@ -434,6 +446,8 @@ public final class RepairRunnerTest {
                 RepairSegment.builder(
                         Segment.builder()
                             .withTokenRange(new RingRange(BigInteger.ZERO, BigInteger.ONE))
+                            .withActiveTime("")
+                            .withInactiveTime("")
                             .build(),
                         cf)
                     .withState(RepairSegment.State.RUNNING)
@@ -442,6 +456,8 @@ public final class RepairRunnerTest {
                 RepairSegment.builder(
                     Segment.builder()
                         .withTokenRange(new RingRange(BigInteger.ONE, BigInteger.ZERO))
+                        .withActiveTime("")
+                        .withInactiveTime("")
                         .build(),
                     cf)));
 
@@ -548,7 +564,9 @@ public final class RepairRunnerTest {
             tokens,
             Boolean.FALSE,
             RepairRunService.buildReplicasToRangeMap(RepairRunnerTest.sixNodeCluster()),
-            "2.2.10");
+            "2.2.10",
+            "",
+            "");
 
     Map<List<String>, List<String>> map = RepairRunnerTest.sixNodeCluster();
     Map<String, String> endpointsSixNodes = RepairRunnerTest.sixNodeClusterEndpoint();
@@ -577,7 +595,7 @@ public final class RepairRunnerTest {
     Map<String, String> endpointsSixNodes = RepairRunnerTest.sixNodeClusterEndpoint();
 
     List<Segment> segments = generator.generateSegments(
-            32, tokens, Boolean.FALSE, RepairRunService.buildReplicasToRangeMap(map), "2.2.10");
+            32, tokens, Boolean.FALSE, RepairRunService.buildReplicasToRangeMap(map), "2.2.10","","");
 
     List<RingRange> ranges = RepairRunner.getParallelRanges(
             RepairRunner.getPossibleParallelRepairsCount(map, endpointsSixNodes),
@@ -601,7 +619,7 @@ public final class RepairRunnerTest {
 
     Map<List<String>, List<String>> map = RepairRunnerTest.sixNodeCluster();
     List<Segment> segments = generator.generateSegments(
-            6, tokens, Boolean.FALSE, RepairRunService.buildReplicasToRangeMap(map), "2.1.17");
+            6, tokens, Boolean.FALSE, RepairRunService.buildReplicasToRangeMap(map), "2.1.17","","");
 
     assertEquals(11, segments.size());
   }
@@ -617,7 +635,7 @@ public final class RepairRunnerTest {
     Map<List<String>, List<String>> map = RepairRunnerTest.sixNodeCluster();
 
     List<Segment> segments = generator.generateSegments(
-            6, tokens, Boolean.FALSE, RepairRunService.buildReplicasToRangeMap(map), "2.2.17");
+            6, tokens, Boolean.FALSE, RepairRunService.buildReplicasToRangeMap(map), "2.2.17","","");
 
     assertEquals(6, segments.size());
   }

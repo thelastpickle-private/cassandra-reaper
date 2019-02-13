@@ -102,11 +102,14 @@ public final class RepairManager implements AutoCloseable {
   public void resumeRunningRepairRuns() throws ReaperException {
     try {
       heart.beat();
+
+      Collection<RepairRun> runningPausedRepairRuns = context.storage.getRepairRunsWithState(
+              RepairRun.RunState.RUNNING_TF_PAUSED);
+      resumeUnkownRunningRepairRuns(runningPausedRepairRuns);
       Collection<RepairRun> runningRepairRuns = context.storage.getRepairRunsWithState(RepairRun.RunState.RUNNING);
-      Collection<RepairRun> pausedRepairRuns = context.storage.getRepairRunsWithState(RepairRun.RunState.PAUSED);
       abortAllRunningSegmentsWithNoLeader(runningRepairRuns);
-      abortAllRunningSegmentsInKnownPausedRepairRuns(pausedRepairRuns);
       resumeUnkownRunningRepairRuns(runningRepairRuns);
+      Collection<RepairRun> pausedRepairRuns = context.storage.getRepairRunsWithState(RepairRun.RunState.PAUSED);
       resumeUnknownPausedRepairRuns(pausedRepairRuns);
     } catch (RuntimeException e) {
       throw new ReaperException(e);
@@ -293,6 +296,9 @@ public final class RepairManager implements AutoCloseable {
         return updatedRun;
       }
       case RUNNING:
+      case RUNNING_TF_PAUSED:
+        Preconditions.checkState(
+            !repairRunners.containsKey(runId), "trying to re-trigger run that is already running, with id " + runId);
         LOG.info("re-trigger a running run after restart, with id {}", runId);
         startRunner(runId);
         return runToBeStarted;

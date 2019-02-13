@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import javax.annotation.Nullable;
@@ -108,24 +109,28 @@ public final class RepairRunResource {
       @QueryParam("nodes") Optional<String> nodesToRepairParam,
       @QueryParam("datacenters") Optional<String> datacentersToRepairParam,
       @QueryParam("blacklistedTables") Optional<String> blacklistedTableNamesParam,
-      @QueryParam("repairThreadCount") Optional<Integer> repairThreadCountParam) {
+      @QueryParam("repairThreadCount") Optional<Integer> repairThreadCountParam,
+      @QueryParam("activeTime") Optional<String> activeTimeParam,
+      @QueryParam("inactiveTime") Optional<String> inactiveTimeParam) {
 
     try {
       final Response possibleFailedResponse
           = RepairRunResource.checkRequestForAddRepair(
-          context,
-          clusterName,
-          keyspace,
-          tableNamesParam,
-          owner,
-          segmentCountPerNode,
-          repairParallelism,
-          intensityStr,
-          incrementalRepairStr,
-          nodesToRepairParam,
-          datacentersToRepairParam,
-          blacklistedTableNamesParam,
-          repairThreadCountParam);
+              context,
+              clusterName,
+              keyspace,
+              tableNamesParam,
+              owner,
+              segmentCountPerNode,
+              repairParallelism,
+              intensityStr,
+              incrementalRepairStr,
+              nodesToRepairParam,
+              datacentersToRepairParam,
+              blacklistedTableNamesParam,
+              repairThreadCountParam,
+              activeTimeParam,
+              inactiveTimeParam);
 
       if (null != possibleFailedResponse) {
         return possibleFailedResponse;
@@ -197,6 +202,17 @@ public final class RepairRunResource {
         return Response.status(Response.Status.NOT_FOUND).entity(ex.getMessage()).build();
       }
 
+      final String activeTime;
+      final String inactiveTime;
+      if (activeTimeParam.isPresent() && inactiveTimeParam.isPresent()) {
+        activeTime = activeTimeParam.get();
+        inactiveTime = inactiveTimeParam.get();
+        LOG.debug("activeTime - inactiveTime : {} - {}", activeTime, inactiveTime);
+      } else {
+        activeTime = "";
+        inactiveTime = "";
+        LOG.debug("no activeTime / inactiveTime given, using default value: {} - {}", activeTime, inactiveTime);
+      }
 
       RepairUnit.Builder builder = RepairUnit.builder()
               .clusterName(cluster.getName())
@@ -206,7 +222,9 @@ public final class RepairRunResource {
               .nodes(nodesToRepair)
               .datacenters(datacentersToRepair)
               .blacklistedTables(blacklistedTableNames)
-              .repairThreadCount(repairThreadCountParam.orElse(context.config.getRepairThreadCount()));
+              .repairThreadCount(repairThreadCountParam.orElse(context.config.getRepairThreadCount()))
+              .activeTime(activeTime)
+              .inactiveTime(inactiveTime);
 
       final RepairUnit theRepairUnit = repairUnitService.getOrCreateRepairUnit(cluster, builder);
 
@@ -243,7 +261,9 @@ public final class RepairRunResource {
               0,
               segments,
               parallelism,
-              intensity);
+              intensity,
+              activeTime,
+              inactiveTime);
 
       return Response.created(buildRepairRunUri(uriInfo, newRepairRun))
           .entity(new RepairRunStatus(newRepairRun, addAnyTwcsBlacklistedTables(theRepairUnit), 0))
@@ -273,7 +293,9 @@ public final class RepairRunResource {
       Optional<String> nodesStr,
       Optional<String> datacentersStr,
       Optional<String> blacklistedTableNamesParam,
-      Optional<Integer> repairThreadCountStr) throws ReaperException {
+      Optional<Integer> repairThreadCountStr,
+      Optional<String> activeTime,
+      Optional<String> inactiveTime) throws ReaperException {
 
     if (!clusterName.isPresent()) {
       return createMissingArgumentResponse("clusterName");
@@ -356,6 +378,21 @@ public final class RepairRunResource {
           .build();
     }
 
+    if (activeTime.isPresent()) {
+      try {
+        parseTimeFormat(activeTime.get());
+      } catch (ValidationException ex) {
+        return Response.status(Status.BAD_REQUEST).entity(ex.getMessage()).build();
+      }
+    }
+
+    if (inactiveTime.isPresent()) {
+      try {
+        parseTimeFormat(inactiveTime.get());
+      } catch (ValidationException ex) {
+        return Response.status(Status.BAD_REQUEST).entity(ex.getMessage()).build();
+      }
+    }
     return null;
   }
 
@@ -834,6 +871,15 @@ public final class RepairRunResource {
       return intensity;
     } catch (NumberFormatException ex) {
       throw new ValidationException("invalid value for query parameter \"intensity\": " + input, ex);
+    }
+  }
+
+  private static void parseTimeFormat(String input) throws ValidationException {
+    if (!input.equals("")) {
+      Pattern pattern = Pattern.compile("([01]?[0-9]|2[0-3]):[0-5][0-9]");
+      if (!pattern.matcher(input).matches()) {
+        throw new ValidationException("\"in/active time\" should be in HH:MM format " + input);
+      }
     }
   }
 }

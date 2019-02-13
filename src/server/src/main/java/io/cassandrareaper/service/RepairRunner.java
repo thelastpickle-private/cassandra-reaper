@@ -49,6 +49,10 @@ import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.cassandra.repair.RepairParallelism;
 import org.apache.commons.lang3.tuple.Pair;
 import org.joda.time.DateTime;
+import org.joda.time.Duration;
+import org.joda.time.LocalTime;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,6 +71,7 @@ final class RepairRunner implements Runnable {
   private float repairProgress;
   private float segmentsDone;
   private float segmentsTotal;
+  private Duration fullDuration;
 
   RepairRunner(AppContext context, UUID repairRunId) throws ReaperException {
     LOG.debug("Creating RepairRunner for run with ID {}", repairRunId);
@@ -212,6 +217,7 @@ final class RepairRunner implements Runnable {
         case NOT_STARTED:
           start();
           break;
+        case RUNNING_TF_PAUSED:
         case RUNNING:
           startNextSegment();
           // We're updating the node list of the cluster at the start of each new run.
@@ -415,6 +421,8 @@ final class RepairRunner implements Runnable {
     final UUID unitId;
     final double intensity;
     final RepairParallelism validationParallelism;
+    LocalTime activeTime;
+    LocalTime inactiveTime;
     {
       RepairRun repairRun = context.storage.getRepairRun(repairRunId).get();
       unitId = repairRun.getRepairUnitId();
@@ -423,8 +431,61 @@ final class RepairRunner implements Runnable {
 
       int amountDone = context.storage.getSegmentAmountForRepairRunWithState(repairRunId, RepairSegment.State.DONE);
       repairProgress = (float) amountDone / repairRun.getSegmentCount();
-    }
 
+      String activeTimeStr = "";
+      String inactiveTimeStr = "";
+      if (segment.getActiveTime().equals("") && segment.getInactiveTime().equals("")) {
+        activeTimeStr = "0:0";
+        inactiveTimeStr = "0:0";
+      } else {
+        activeTimeStr = segment.getActiveTime();
+        inactiveTimeStr = segment.getInactiveTime();
+      }
+      if (!activeTimeStr.equals(inactiveTimeStr)) {
+        DateTimeFormatter formatter = DateTimeFormat.forPattern("H:m");
+        activeTime = formatter.parseLocalTime(activeTimeStr);
+        inactiveTime = formatter.parseLocalTime(inactiveTimeStr);
+
+        if (! isNowActive(activeTime, inactiveTime)) {
+
+          LOG.info("out of active time frame, should wait until next ActiveTime: " + activeTime.toString());
+
+          if (!repairRun.getRunState().equals("RUNNING_TF_PAUSED")) {
+            context.storage.updateRepairRun(
+                    repairRun
+                            .with()
+                            .runState(RepairRun.RunState.RUNNING_TF_PAUSED)
+                            .lastEvent(String.format("Paused until next activeTime"))
+                            .build(repairRunId));
+          }
+          currentlyRunningSegments.set(rangeIndex, null);
+          return true;
+
+        } else if (segmentsDone > 0 && fullDuration != null) {
+          DateTime realInactiveTime = inactiveTime.toDateTimeToday();
+          if (realInactiveTime.isBeforeNow()) {
+            realInactiveTime = realInactiveTime.plusDays(1);
+          }
+          Duration untilInactiveTimeDuration = new Duration(DateTime.now(), realInactiveTime);
+          Duration averageSegmentDuration = new Duration(fullDuration.dividedBy((long) segmentsDone));
+          Duration durationDifference = new Duration(untilInactiveTimeDuration.minus(averageSegmentDuration));
+
+          if (durationDifference.isShorterThan(new Duration(0))) {
+            LOG.info("not enough time to run next segment before inactiveTime, should wait");
+            currentlyRunningSegments.set(rangeIndex, null);
+            return true;
+          }
+        }
+      }
+      if (!repairRun.getRunState().equals("RUNNING")) {
+        context.storage.updateRepairRun(
+            repairRun
+            .with()
+            .runState(RepairRun.RunState.RUNNING)
+            .lastEvent(String.format("Resumed run after activeTime passed"))
+            .build(repairRunId));
+      }
+    }
     RepairUnit repairUnit = context.storage.getRepairUnit(unitId);
     String keyspace = repairUnit.getKeyspaceName();
     LOG.debug("preparing to repair segment {} on run with id {}", segmentId, repairRunId);
@@ -551,6 +612,12 @@ final class RepairRunner implements Runnable {
 
         case DONE:
           // Successful repair
+          Duration lastSegmentDuration = new Duration( segment.get().getStartTime(), segment.get().getEndTime() );
+          if (fullDuration == null) {
+            fullDuration = new Duration(lastSegmentDuration);
+          } else {
+            fullDuration = fullDuration.plus(lastSegmentDuration);
+          }
           break;
 
         default:
@@ -599,4 +666,16 @@ final class RepairRunner implements Runnable {
     return MetricRegistry.name(RepairRunner.class, metric, cleanClusterName, cleanRepairRunId);
   }
 
+  public boolean isNowActive( LocalTime activeLocalTime, LocalTime inactiveLocalTime) {
+    LocalTime now = LocalTime.now();
+    if (activeLocalTime.isBefore(now) && inactiveLocalTime.isAfter(now)) {
+      // active < now && inactive > now
+      return true;
+    } else if (activeLocalTime.isAfter(now) && inactiveLocalTime.isBefore(now)) {
+      // active > now && inactive < now
+      return false;
+    } else {
+      return activeLocalTime.isAfter(inactiveLocalTime);
+    }
+  }
 }

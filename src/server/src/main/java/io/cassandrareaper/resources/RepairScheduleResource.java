@@ -101,23 +101,27 @@ public final class RepairScheduleResource {
       @QueryParam("nodes") Optional<String> nodesToRepairParam,
       @QueryParam("datacenters") Optional<String> datacentersToRepairParam,
       @QueryParam("blacklistedTables") Optional<String> blacklistedTableNamesParam,
-      @QueryParam("repairThreadCount") Optional<Integer> repairThreadCountParam) {
+      @QueryParam("repairThreadCount") Optional<Integer> repairThreadCountParam,
+      @QueryParam("activeTime") Optional<String> activeTimeParam,
+      @QueryParam("inactiveTime") Optional<String> inactiveTimeParam) {
 
     try {
       Response possibleFailResponse = RepairRunResource.checkRequestForAddRepair(
-          context,
-          clusterName,
-          keyspace,
-          tableNamesParam,
-          owner,
-          segmentCountPerNode,
-          repairParallelism,
-          intensityStr,
-          incrementalRepairStr,
-          nodesToRepairParam,
-          datacentersToRepairParam,
-          blacklistedTableNamesParam,
-          repairThreadCountParam);
+              context,
+              clusterName,
+              keyspace,
+              tableNamesParam,
+              owner,
+              segmentCountPerNode,
+              repairParallelism,
+              intensityStr,
+              incrementalRepairStr,
+              nodesToRepairParam,
+              datacentersToRepairParam,
+              blacklistedTableNamesParam,
+              repairThreadCountParam,
+              activeTimeParam,
+              inactiveTimeParam);
 
       if (null != possibleFailResponse) {
         return possibleFailResponse;
@@ -191,6 +195,18 @@ public final class RepairScheduleResource {
             .build();
       }
 
+      final String activeTime;
+      final String inactiveTime;
+      if (activeTimeParam.isPresent() && inactiveTimeParam.isPresent()) {
+        activeTime = activeTimeParam.get();
+        inactiveTime = inactiveTimeParam.get();
+        LOG.debug("activeTime - inactiveTime: {} - {}", activeTime, inactiveTime);
+      } else {
+        activeTime = "";
+        inactiveTime = "";
+        LOG.debug("no activeTime / inactiveTime given, so using default value: {} - {}", activeTime, inactiveTime);
+      }
+
       RepairUnit.Builder unitBuilder = RepairUnit.builder()
           .clusterName(cluster.getName())
           .keyspaceName(keyspace.get())
@@ -199,7 +215,9 @@ public final class RepairScheduleResource {
           .nodes(nodesToRepair)
           .datacenters(datacentersToRepair)
           .blacklistedTables(blacklistedTableNames)
-          .repairThreadCount(repairThreadCountParam.orElse(context.config.getRepairThreadCount()));
+          .repairThreadCount(repairThreadCountParam.orElse(context.config.getRepairThreadCount()))
+          .activeTime(activeTime)
+          .inactiveTime(inactiveTime);
 
       return addRepairSchedule(
           cluster,
@@ -211,7 +229,10 @@ public final class RepairScheduleResource {
           incremental,
           nextActivation,
           getSegmentCount(segmentCountPerNode),
-          getIntensity(intensityStr));
+          getIntensity(intensityStr),
+          activeTime,
+          inactiveTime
+      );
 
     } catch (ReaperException e) {
       LOG.error(e.getMessage(), e);
@@ -229,7 +250,9 @@ public final class RepairScheduleResource {
       boolean incremental,
       DateTime next,
       int segments,
-      Double intensity) {
+      Double intensity,
+      String activeTime,
+      String inactiveTime) {
 
     Optional<RepairSchedule> conflictingRepairSchedule
         = repairScheduleService.conflictingRepairSchedule(cluster, unitBuilder);
@@ -263,7 +286,8 @@ public final class RepairScheduleResource {
           .checkState(unit.getIncrementalRepair() == incremental, "%s!=%s", unit.getIncrementalRepair(), incremental);
 
       RepairSchedule newRepairSchedule = repairScheduleService
-          .storeNewRepairSchedule(cluster, unit, days, next, owner, segments, parallel, intensity);
+          .storeNewRepairSchedule(cluster, unit, days, next, owner, segments, parallel, intensity,
+                  activeTime, inactiveTime);
 
       return Response.created(buildRepairScheduleUri(uriInfo, newRepairSchedule)).build();
     }

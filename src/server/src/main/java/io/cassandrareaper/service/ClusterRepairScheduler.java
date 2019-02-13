@@ -122,7 +122,9 @@ public final class ClusterRepairScheduler {
             REPAIR_OWNER,
             context.config.getSegmentCountPerNode(),
             context.config.getRepairParallelism(),
-            context.config.getRepairIntensity());
+            context.config.getRepairIntensity(),
+            context.config.getActiveTime(),
+            context.config.getInactiveTime());
 
     LOG.info("Scheduled repair created: {}", repairSchedule);
   }
