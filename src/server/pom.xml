@@ -603,8 +603,6 @@
                     <cucumber.versions-to-test>${cucumber.upgrade-versions}</cucumber.versions-to-test>
                     <io.cassandrareaper.service.SchedulingManager.period_seconds>1</io.cassandrareaper.service.SchedulingManager.period_seconds>
                   </systemPropertyVariables>
-                  <!-- noverify is needed for ReaperTestJettyRunner.ParentLastURLClassLoader.ChildURLClassLoader.findClass(..) -->
-                  <argLine>-noverify</argLine>
               </configuration>
             </plugin>
             <plugin>
