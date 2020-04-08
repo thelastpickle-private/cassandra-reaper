@@ -119,7 +119,7 @@ public final class RepairManagerTest {
     Mockito.doReturn(run).when(context.repairManager).startRepairRun(run);
     when(context.storage.getRepairRunsWithState(RepairRun.RunState.RUNNING)).thenReturn(Arrays.asList(run));
     when(context.storage.getRepairRunsWithState(RepairRun.RunState.PAUSED)).thenReturn(Collections.emptyList());
-    when(context.storage.getSegmentsWithState(any(), any())).thenReturn(Arrays.asList(segment));
+    when(context.storage.getSegmentsWithStartedOrRunningState(any())).thenReturn(Arrays.asList(segment));
     when(((IDistributedStorage) context.storage).getLeaders()).thenReturn(Collections.emptyList());
 
     context.repairManager.resumeRunningRepairRuns();
@@ -196,7 +196,7 @@ public final class RepairManagerTest {
     Mockito.doReturn(run).when(context.repairManager).startRepairRun(run);
     when(context.storage.getRepairRunsWithState(RepairRun.RunState.RUNNING)).thenReturn(Arrays.asList(run));
     when(context.storage.getRepairRunsWithState(RepairRun.RunState.PAUSED)).thenReturn(Collections.emptyList());
-    when(context.storage.getSegmentsWithState(any(), any())).thenReturn(Arrays.asList(segment));
+    when(context.storage.getSegmentsWithStartedOrRunningState(any())).thenReturn(Arrays.asList(segment));
     when(((IDistributedStorage) context.storage).getLeaders()).thenReturn(Arrays.asList(segment.getId()));
 
     context.repairManager.resumeRunningRepairRuns();
@@ -344,7 +344,7 @@ public final class RepairManagerTest {
     Mockito.doReturn(run).when(context.repairManager).startRepairRun(run);
     when(context.storage.getRepairRunsWithState(RepairRun.RunState.RUNNING)).thenReturn(Arrays.asList(run));
     when(context.storage.getRepairRunsWithState(RepairRun.RunState.PAUSED)).thenReturn(Collections.emptyList());
-    when(context.storage.getSegmentsWithState(any(), any())).thenReturn(Arrays.asList(segment));
+    when(context.storage.getSegmentsWithStartedOrRunningState(any())).thenReturn(Arrays.asList(segment));
 
     context.repairManager.resumeRunningRepairRuns();
 

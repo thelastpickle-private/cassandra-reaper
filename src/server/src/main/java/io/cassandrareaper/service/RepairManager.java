@@ -155,10 +155,10 @@ public final class RepairManager implements AutoCloseable {
   private void abortAllRunningSegmentsWithNoLeader(Collection<RepairRun> runningRepairRuns) {
     runningRepairRuns
         .forEach((repairRun) -> {
-          Collection<RepairSegment> runningSegments
-              = context.storage.getSegmentsWithState(repairRun.getId(), RepairSegment.State.RUNNING);
+          Collection<RepairSegment> abortSegments
+              = context.storage.getSegmentsWithStartedOrRunningState(repairRun.getId());
 
-          abortSegmentsWithNoLeader(repairRun, runningSegments);
+          abortSegmentsWithNoLeader(repairRun, abortSegments);
         });
   }
 
@@ -187,11 +187,11 @@ public final class RepairManager implements AutoCloseable {
           .stream()
           .filter((pausedRepairRun) -> repairRunners.containsKey(pausedRepairRun.getId()))
           .forEach((pausedRepairRun) -> {
-            // Abort all running segments for paused repair runs
-            Collection<RepairSegment> runningSegments
-                = context.storage.getSegmentsWithState(pausedRepairRun.getId(), RepairSegment.State.RUNNING);
+            // Abort all running and started segments for paused repair runs
+            Collection<RepairSegment> abortSegments
+                = context.storage.getSegmentsWithStartedOrRunningState(pausedRepairRun.getId());
 
-            abortSegments(runningSegments, pausedRepairRun);
+            abortSegments(abortSegments, pausedRepairRun);
           });
     } finally {
       repairRunnersLock.unlock();
@@ -223,7 +223,7 @@ public final class RepairManager implements AutoCloseable {
       repairRunnersLock.lock();
       if (context.storage instanceof IDistributedStorage || !repairRunners.containsKey(repairRun.getId())) {
         // When multiple Reapers are in use, we can get stuck segments when one instance is rebooted
-        // Any segment in RUNNING state but with no leader should be killed
+        // Any segment in RUNNING or STARTED state but with no leader should be killed
         List<UUID> leaders = context.storage instanceof IDistributedStorage
                 ? ((IDistributedStorage) context.storage).getLeaders()
                 : Collections.emptyList();
@@ -276,7 +276,8 @@ public final class RepairManager implements AutoCloseable {
         try {
           // refresh segment once we're inside leader-election
           segment = context.storage.getRepairSegment(repairRun.getId(), segment.getId()).get();
-          if (RepairSegment.State.RUNNING == segment.getState()) {
+          if (RepairSegment.State.RUNNING == segment.getState()
+              || RepairSegment.State.STARTED == segment.getState()) {
             JmxProxy jmxProxy = ClusterFacade.create(context).connect(
                       context.storage.getCluster(repairRun.getClusterName()),
                       Arrays.asList(segment.getCoordinatorHost()));
